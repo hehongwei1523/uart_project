@@ -5,7 +5,10 @@
 #include <string.h>
 #include "Thread.h"
 
+extern void uart_process(void);
+
 char * ComName = "COM10";  //not useful,just for debug
+
 void Device_Init()
 {
 	int result;
@@ -18,7 +21,10 @@ void Device_Init()
 
 uint8* download_file_buf;  //要获取的字符串  
 long download_file_len;    //获取的长度  类型设为long,否则会显示不完整 2016-12-5
-const char * download_file_path = "c:\\dfu\\no-key\\combined5.dfu";//"c:\\dfu\\my.dfu";// /*路径要用双斜杠\\ */  
+						   
+						   // /*路径要用双斜杠\\ */  
+						   //
+const char * download_file_path = "c:\\dfu\\my.dfu";//"c:\\dfu\\no-key\\combined5.dfu";//"c:\\dfu\\no-key\\combine3.dfu"; 
 
 void * File_Handle(void)
 {
@@ -112,38 +118,48 @@ void * Uart_Rcv(void* g)
 	if (uart_data > 1)
 	{
 		uart_data = 0;
-		while (uart_handle != uart_ptr)
-		{
-			int i = 0, j = 0;
-			if (*uart_handle == 0xc0)
-			{
-				uart_next();
-				while (*uart_handle != 0xc0)
-				{
-					//printf("(0x%x)", *uart_handle);
-					i++;
-					if ((i == 1) && (*uart_handle == 'o')) j++;
-					if ((i == 2) && (*uart_handle == 'k')) j++;
-
-					if (j == 2) //表示接收到OK字符串
-					{
-						send_flag = 1;
-						//printf("rcv ok");
-					}
-
-					uart_next();
-				}
-			}
-			uart_next();
-		}
+		uart_next();
+		uart_process();
 	}
 	return 0;
 }
 
-long bufferLength = 1024;
+uint8 dfu_begin[] = "dfu_begin";
+uint8 dfu_end[] = "dfu_end";
+uint8 dfu_data[] = "dfu_data";
+
+void uart_process(void)
+{
+	uint8 result = 0;
+	result = strcmp(uart_handle, dfu_begin);
+	if (result == 0)
+	{
+		send_flag = (uint8)1;
+		printf("dfu_begin ");
+	}
+
+	result = strcmp(uart_handle, dfu_end);
+	if (result == 0)
+	{
+		send_flag = (uint8)255;
+		printf("dfu_end ");
+		exit(0);
+	}
+
+	result = strcmp(uart_handle, dfu_data);
+	if (result == 0)
+	{
+		send_flag = (uint8)20;
+		//printf("dfu_data ");
+	}
+
+	uart_handle = uart_ptr;
+}
+
+long bufferLength = 1023;//Dnload函数最大只能写入1023个字节，否则会出错
 uint16 blockNum = 0;
 
-#define NUMBER 1200
+#define NUMBER 1100
 uint8 * send_buff[NUMBER];
 
 uint8 * send_flag = 0;
@@ -151,43 +167,86 @@ void * Thread(void * a)
 {
 	File_Handle();//读取PC中的DFU文件，加载到数组download_file_buf中
 
-	long times = download_file_len / bufferLength; //计算需要循环的次数
-	printf("times = %d \n",times);
-	
-	if (times == 0)
-	{
-		//发送一个数据包
-		printf("only one packet ! \n");
-		exit(0);
-	}
+	uint8 *data = NULL; 
+	uint8 length_h = 0, length_l = 0;
+    uint8 times_h = 0, time_l = 0;
 
-	while (1)
+	long times = download_file_len / bufferLength; //计算需要循环的次数
+
+	printf("times = %d \n",times);
+	printf("len = %d \n", download_file_len);
+
+	while(1)
 	{
-		
-		while (times--)
+
+		if (send_flag == 1) //begin
 		{
-			long address_offset = blockNum * bufferLength;
-			if (times == 0) bufferLength = download_file_len % bufferLength;
-			printf("block = %d,bufferLength= %d \n", blockNum, bufferLength);
-			//Dnload(blockNum, download_file_buf + address_offset, bufferLength);
-			blockNum++;
+			com_write("times", 5);
+			times_h = (times & 0xFF00) >> 8;
+			data = &times_h;
+			com_write(data, 1);
+			time_l = times & 0xFF;
+			data = &time_l;
+			com_write(data, 1);
+			Sleep(10);
+			printf("times = %d \n", times);
+
 			if (times == 0)
 			{
-				printf("all packet send finish \n");
+				//发送一个数据包
+				com_write("data", 4);
+				length_h = (download_file_len & 0xFF00) >> 8;
+                data = &length_h;
+				com_write(data, 1);
+				length_l = download_file_len & 0xFF;
+				data = &length_l;
+				com_write(data, 1);
+
+				com_write(download_file_buf, download_file_len);
+
+
+				Sleep(100);//等待发送完全结束后才结束进程  2017-1-19
+				printf("only one packet ! \n");
 				exit(0);
+			}
+			else
+			{
+				
+				do{
+					long address_offset = blockNum * bufferLength;
+					if (times == 0) bufferLength = download_file_len % bufferLength;
+					printf("block = %d,bufferLength= %d \n", blockNum, bufferLength);
+
+					com_write("data", 4); Sleep(10);
+
+					length_h = (bufferLength & 0xFF00) >> 8;
+					data = &length_h;
+					com_write(data, 1);
+					length_l = bufferLength & 0xFF;
+					data = &length_l;
+					com_write(data, 1);
+
+					com_write(download_file_buf + address_offset, bufferLength);
+					Sleep(200);//等待发送结束
+
+					blockNum++;
+
+					while (send_flag != 20)
+						;
+					//printf("dfu_data \n");
+					send_flag = 0;
+
+					if (times == 0)
+					{
+						printf("all packet send finish \n");
+						exit(0);
+					}
+				  }
+				 while (times--);
+				
 			}
 		}
 		
-
-#if 0
-		if (send_flag) //发送标志位
-		{
-			send_flag = 0;
-
-			//Sleep(300);
-			printf("kk  ");
-		}
-#endif
 	}
 
 }

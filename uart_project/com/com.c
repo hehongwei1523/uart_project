@@ -1,8 +1,4 @@
-/*
-* LamaProg v 0.1.1
-* Communicanion routines v 0.1.0
-* Jan Parkman   (parkmaj@users.sourceforge.net)
-*/
+
 
 #pragma warning(disable: 4996)
 
@@ -13,8 +9,8 @@
 
 #define STRICT 1 
 #define VERBOSE 1
- HANDLE hCOMHnd;          // Handle serioveho portu
 
+HANDLE hCOMHnd;          // Handle serioveho portu
 
 DWORD dwError;
 
@@ -58,7 +54,7 @@ int com_init(char *s)
 	GetCommTimeouts(hCOMHnd, &timeouts);
 	timeouts.ReadIntervalTimeout = 0;// MAXDWORD;
 	timeouts.ReadTotalTimeoutMultiplier = 10;// 10;
-	timeouts.ReadTotalTimeoutConstant = 1;// 1;// 500;// 60000;  //2016-11-23 时间缩小,不能为0
+	timeouts.ReadTotalTimeoutConstant = 1;// 500;// 60000;  //2016-11-23 时间缩小,不能为0
 	timeouts.WriteTotalTimeoutMultiplier = 0;
 	timeouts.WriteTotalTimeoutConstant = 0;
 	SetCommTimeouts(hCOMHnd, &timeouts);
@@ -81,13 +77,11 @@ int com_init(char *s)
 	DCBData.fRtsControl = RTS_CONTROL_DISABLE; //RTS_CONTROL_ENABLE;//
 	DCBData.fAbortOnError = 0;
 
-	//DCBData.fParity = comParity != NOPARITY;
    //以下设置替代函数BuildCommDCB
 	DCBData.ByteSize = 8;
 	DCBData.StopBits = ONESTOPBIT;
-	DCBData.BaudRate = CBR_115200; // CBR_256000;//460800; // 
-	DCBData.Parity = 0;// comBCSPParity; //2016-11-15  奇偶校验位：设为0
-	//BuildCommDCB("115200,N,8,1", &DCBData);  //注意：这里会出错，导致返回87号错误
+	DCBData.BaudRate =  CBR_115200; // CBR_256000;//460800; //
+	DCBData.Parity = NOPARITY; //2016-11-15  奇偶校验位：设为0
 
 	if (!SetCommState(hCOMHnd, &DCBData))
 	{
@@ -108,10 +102,12 @@ int com_write(unsigned char *data, DWORD length)
 {
 	BOOL bRes;
 	DWORD dwWritten;
+	COMSTAT ComStat;
 
 	//char length = strlen(data);
 	//printf("length=%d ", length);
 
+	//ClearCommError(hCOMHnd, &dwError, &ComStat);
 	bRes = WriteFile(hCOMHnd, data, (DWORD)length, &dwWritten, NULL);
 	//bRes = WriteFile(hCOMHnd, data, (DWORD)(strlen(data)), &dwWritten, NULL);
 
@@ -233,93 +229,6 @@ unsigned char com_get()
 #endif
 
 	return (unsigned char)data;
-	/*
-	bResult = WaitCommEvent(hCOMHnd, &Event, FILE_FLAG_OVERLAPPED);
-
-	if (!bResult)
-	{
-		//如果WaitCommEvent()返回FALSE,调用GetLastError()判断原因 
-		switch (dwError = GetLastError())
-		{
-			case ERROR_IO_PENDING:      //重叠操作正在后台进行 
-			{
-				//如果串口这时无字符,这是正常返回值,继续 
-				break;
-			}
-			case 87:
-			{
-				//在WIN NT下这是一个可能结果，但我没有找到 
-				//它出现的原因,我什么也不做,继续 
-				break;
-			}
-			default:
-			{
-				//所有其它错误代码均显示串口出错,显示出错信息 
-				printf("等待串口事件");
-
-			}
-		}
-	}
-	else
-	{
-		//如果WaitCommEvent()返回true,检查输入缓冲区是否确实 
-		//有字节可读,若没有,则继续下一循环 
-		//ClearCommError()将更新串口状态结构并清除所有串口硬件错误 
-		ClearCommError(hCOMHnd, &dwError, &ComStat);
-		if (ComStat.cbInQue == 0)   //输入缓冲队列长为0,无字符 
-			;//continue;
-	}
-	
-	switch (Event)
-	{
-		case 0: //关闭串口事件,优先处理 
-		{
-			printf("关闭串口");
-		}
-		case 1: //读串口事件 
-		{
-			//获取串口事件掩码 
-			GetCommMask(hCOMHnd, &CommEvent);
-			if (CommEvent & EV_RXCHAR) //收到一个字符 
-			{
-				//ReceiveChar(Port);//读入一个字符 
-				bRes = ReadFile(hCOMHnd, &data, 1, &dwRead, NULL);
-				printf("data = 0x%2x ", data);
-			}
-			break;
-		}
-     }
-	 */
-	//
-/*	
-	printf("dwRead = 0x%2x ",dwRead);
-	if (!bRes)
-	{
-#if VERBOSE
-		dwError = GetLastError(); // 处理错误 
-		printf("dwError = %d \n", dwError);
-		printf("Get error...\n");
-		exit(-1);
-#endif
-		return(-1);
-	}
-
-	if (dwRead != 1)
-	{
-#if VERBOSE
-		dwError = GetLastError(); // 处理错误 
-		printf("dwError = %d \n", dwError);
-		printf("Timeout...\n");
-		exit(-1);
-#endif
-		return(-1);
-	}
-	
-	for (int i = 0; i < 20; i++)
-	{
-		printf("0x%x ",data[i]);
-	}
-*/
 
 }
 
